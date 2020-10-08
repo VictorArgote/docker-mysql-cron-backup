@@ -11,28 +11,23 @@ DB_COUNTER=0
 
 backup_db () {
   DB_NAME=$1
-  FILENAME=/backup/$DATE.$DB_NAME.sql
+  FILENAME=/backup/$DB_NAME.sql
   LATEST=/backup/latest.$DB_NAME.sql.gz
-  if mysqldump $ONLY_SCHEMA -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" $DB_NAME $MYSQLDUMP_OPTS > "$FILENAME"
+  if mysqldump --no-tablespaces $ONLY_SCHEMA -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" $DB_NAME $MYSQLDUMP_OPTS > "$FILENAME"
   then
     # Prettify SQL 
     cli-sql-formatter -f $FILENAME -o $FILENAME
 
-    if [[ ! -z "$ONLY_SCHEMA" ]]
+    if [[ ! "$SEGMENT_DB_TABLES" -eq "0" ]]
     then
       for TABLE_NAME in `mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" -N -B -e "show tables from $DB_NAME"`;
       do
           echo "Backing up table: "$TABLE_NAME""
-          FILENAME=$BACKUP_FOLDER/001-$TABLE_NAME.sql
-          mysqldump --no-create-info -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" $DB_NAME $TABLE_NAME > $FILENAME
+          FILENAME=/backup/$DB_NAME.$TABLE_NAME.sql
+          mysqldump --no-tablespaces --no-create-info -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" $DB_NAME $TABLE_NAME > $FILENAME
           cli-sql-formatter -f $FILENAME -o $FILENAME
       done;
     fi
-
-    # gzip "-$GZIP_LEVEL" -f "$FILENAME"
-    # echo "==> Creating symlink to latest backup: $(basename "$FILENAME".gz)"
-    # rm "$LATEST" 2> /dev/null
-    # cd /backup && ln -s $(basename "$FILENAME".gz) $(basename "$LATEST") && cd -
     DB_COUNTER=$(( DB_COUNTER + 1 ))
   else
     rm -rf "$FILENAME"
@@ -53,17 +48,5 @@ do
     backup_db "$db"
   fi
 done
-
-# if [ -n "$MAX_BACKUPS" ]
-# then
-#   MAX_FILES=$(( MAX_BACKUPS * DB_COUNTER ))
-#   while [ "$(find /backup -maxdepth 1 -name "*.sql.gz" -type f | wc -l)" -gt "$MAX_FILES" ]
-#   do
-#     TARGET=$(find /backup -maxdepth 1 -name "*.sql.gz" -type f | sort | head -n 1)
-#     echo "==> Max number of backups ($MAX_BACKUPS) reached. Deleting ${TARGET} ..."
-#     rm -rf "${TARGET}"
-#     echo "==> Backup ${TARGET} deleted"
-#   done
-# fi
 
 echo "=> Backup process finished at $(date "+%Y-%m-%d %H:%M:%S")"
